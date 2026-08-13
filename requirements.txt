@@ -1,0 +1,8 @@
+xgboost
+pandas
+pydantic
+fastapi
+joblib
+uvicorn
+numpy
+streamlit
