@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import secrets
 import socket
 import sqlite3
 
@@ -8,6 +10,8 @@ import pandas as pd
 
 from fastapi import (
     FastAPI,
+    Depends,
+    Header,
     HTTPException,
     Query,
 )
@@ -21,6 +25,7 @@ from src.monitoring.monitoring_service import (
 from src.simulation.simulation_manager import (
     simulation_manager,
 )
+from src.storage.database import initialize_database
 
 
 # ============================================================
@@ -37,16 +42,23 @@ app = FastAPI(
 )
 
 
+@app.on_event("startup")
+def initialize_storage() -> None:
+    """Run safe schema migrations before accepting traffic."""
+    initialize_database()
+
+
 monitoring_service = MonitoringService()
 
 
 # ============================================================
-# MODEL
+# GLOBAL CONFIGURATION
 # ============================================================
 
 BASE_DIR = Path(
     __file__
 ).resolve().parents[1]
+
 
 MODEL_PATH = (
     BASE_DIR
@@ -54,11 +66,13 @@ MODEL_PATH = (
     / "xgb_temperature_predictor.pkl"
 )
 
+
 FEATURE_PATH = (
     BASE_DIR
     / "models"
     / "feature_columns.pkl"
 )
+
 
 DATABASE_PATH = (
     BASE_DIR
@@ -67,22 +81,73 @@ DATABASE_PATH = (
 )
 
 
-model = joblib.load(
-    MODEL_PATH
+# IMPORTANT:
+# The new model has been trained for a
+# timestamp-based 5-minute forecast.
+
+PREDICTION_HORIZON_SECONDS = 300
+
+PREDICTION_HORIZON_MINUTES = (
+    PREDICTION_HORIZON_SECONDS // 60
 )
 
-feature_names = joblib.load(
-    FEATURE_PATH
-)
+
+# ============================================================
+# LOAD MODEL
+# ============================================================
+
+print("=" * 70)
+print("SENTINELDC API")
+print("=" * 70)
+
+print("\nLoading XGBoost model...")
+
+try:
+
+    model = joblib.load(
+        MODEL_PATH
+    )
+
+    print(
+        "Model loaded successfully."
+    )
+
+except Exception as error:
+
+    print(
+        f"ERROR loading model: {error}"
+    )
+
+    raise
+
+
+# ============================================================
+# LOAD FEATURE COLUMNS
+# ============================================================
 
 print(
-    "Number of features:",
-    len(feature_names),
+    "Loading feature columns..."
 )
 
-print(
-    feature_names
-)
+try:
+
+    feature_names = joblib.load(
+        FEATURE_PATH
+    )
+
+    print(
+        "Number of features:",
+        len(feature_names)
+    )
+
+except Exception as error:
+
+    print(
+        f"ERROR loading feature columns: "
+        f"{error}"
+    )
+
+    raise
 
 
 # ============================================================
@@ -99,8 +164,23 @@ class SpeedRequest(BaseModel):
     speed: float
 
 
+def require_admin(
+    x_api_key: str | None = Header(default=None),
+) -> None:
+    """Protect operational controls when deployed with an admin key.
+
+    Set SENTINELDC_ADMIN_API_KEY in non-demo deployments.  Leaving it unset
+    intentionally keeps the existing local replay workflow frictionless.
+    """
+    configured_key = os.getenv("SENTINELDC_ADMIN_API_KEY")
+    if configured_key and not (
+        x_api_key and secrets.compare_digest(x_api_key, configured_key)
+    ):
+        raise HTTPException(status_code=401, detail="invalid admin API key")
+
+
 # ============================================================
-# SYSTEM HEALTH HELPERS
+# SYSTEM HEALTH
 # ============================================================
 
 def check_kafka():
@@ -127,7 +207,7 @@ def check_kafka():
 
 def check_database():
     """
-    Check whether SQLite database is accessible.
+    Check whether SQLite is accessible.
     """
 
     try:
@@ -163,17 +243,69 @@ def home():
 
     return {
 
-        "project": "SentinelDC",
+        "project":
+            "SentinelDC",
 
-        "service": (
-            "Temperature Prediction API"
-        ),
+        "service":
+            "Temperature Prediction API",
 
-        "status": "running",
+        "status":
+            "running",
 
-        "features_required": (
-            len(feature_names)
-        ),
+        "features_required":
+            len(feature_names),
+
+        "prediction_horizon_seconds":
+            PREDICTION_HORIZON_SECONDS,
+
+        "prediction_horizon":
+            f"{PREDICTION_HORIZON_MINUTES} minutes",
+
+    }
+
+
+@app.get("/health/live")
+def liveness():
+    """Process liveness probe; no dependency checks by design."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def readiness():
+    """Readiness probe for a load balancer or container orchestrator."""
+    database_ready = check_database()
+    if not database_ready:
+        raise HTTPException(status_code=503, detail="database unavailable")
+    return {"status": "ready", "database": "healthy", "model": "loaded"}
+
+
+# ============================================================
+# FORECAST CONFIGURATION
+# ============================================================
+
+@app.get("/forecast/config")
+def forecast_config():
+
+    return {
+
+        "horizon_seconds":
+            PREDICTION_HORIZON_SECONDS,
+
+        "horizon_minutes":
+            PREDICTION_HORIZON_MINUTES,
+
+        "description":
+            (
+                "XGBoost predicts module "
+                "temperature 5 minutes ahead."
+            ),
+
+        "model":
+            "XGBoost",
+
+        "modules":
+            8,
+
     }
 
 
@@ -194,6 +326,7 @@ def simulation_status():
 @app.post("/simulation/start")
 def start_simulation(
     request: SpeedRequest,
+    _: None = Depends(require_admin),
 ):
 
     try:
@@ -215,7 +348,7 @@ def start_simulation(
 # ============================================================
 
 @app.post("/simulation/pause")
-def pause_simulation():
+def pause_simulation(_: None = Depends(require_admin)):
 
     return simulation_manager.pause()
 
@@ -225,7 +358,7 @@ def pause_simulation():
 # ============================================================
 
 @app.post("/simulation/stop")
-def stop_simulation():
+def stop_simulation(_: None = Depends(require_admin)):
 
     return simulation_manager.stop()
 
@@ -237,6 +370,7 @@ def stop_simulation():
 @app.post("/simulation/speed")
 def set_simulation_speed(
     request: SpeedRequest,
+    _: None = Depends(require_admin),
 ):
 
     try:
@@ -260,6 +394,7 @@ def set_simulation_speed(
 @app.post("/simulation/scenario")
 def set_simulation_scenario(
     request: ScenarioRequest,
+    _: None = Depends(require_admin),
 ):
 
     try:
@@ -307,98 +442,124 @@ def system_status():
 
         "simulation": {
 
-            "status": (
-                simulation["status"]
-            ),
+            "status":
+                simulation["status"],
 
-            "running": (
-                simulation_running
-            ),
+            "running":
+                simulation_running,
 
-            "speed": (
-                simulation["speed"]
-            ),
+            "speed":
+                simulation["speed"],
 
-            "scenario": (
-                simulation["scenario"]
-            ),
+            "scenario":
+                simulation.get(
+                    "scenario",
+                    "NORMAL"
+                ),
 
-            "records_sent": (
-                simulation["records_sent"]
-            ),
+            "records_sent":
+                simulation[
+                    "records_sent"
+                ],
 
-            "total_records": (
-                simulation["total_records"]
-            ),
+            "total_records":
+                simulation[
+                    "total_records"
+                ],
 
-            "progress_percent": (
+            "progress_percent":
                 simulation[
                     "progress_percent"
-                ]
-            ),
+                ],
+
         },
 
         "kafka": {
 
-            "status": (
-                "CONNECTED"
-                if kafka_connected
-                else "DISCONNECTED"
-            ),
+            "status":
+                (
+                    "CONNECTED"
+                    if kafka_connected
+                    else "DISCONNECTED"
+                ),
 
-            "healthy": (
-                kafka_connected
-            ),
+            "healthy":
+                kafka_connected,
+
         },
 
         "ml_inference": {
 
-            "status": (
-                "PROCESSING"
-                if (
+            "status":
+                (
+                    "PROCESSING"
+                    if (
+                        simulation_running
+                        and kafka_connected
+                    )
+                    else "IDLE"
+                ),
+
+            "healthy":
+                (
                     simulation_running
                     and kafka_connected
-                )
-                else "IDLE"
-            ),
+                ),
 
-            "healthy": (
-                simulation_running
-                and kafka_connected
-            ),
         },
 
         "decision_engine": {
 
-            "status": "ACTIVE",
+            "status":
+                "ACTIVE",
 
-            "healthy": True,
+            "healthy":
+                True,
+
         },
 
         "database": {
 
-            "status": (
-                "HEALTHY"
-                if database_healthy
-                else "ERROR"
-            ),
+            "status":
+                (
+                    "HEALTHY"
+                    if database_healthy
+                    else "ERROR"
+                ),
 
-            "healthy": (
-                database_healthy
-            ),
+            "healthy":
+                database_healthy,
+
         },
 
         "api": {
 
-            "status": "HEALTHY",
+            "status":
+                "HEALTHY",
 
-            "healthy": True,
+            "healthy":
+                True,
+
         },
+
+        "forecast": {
+
+            "horizon_seconds":
+                PREDICTION_HORIZON_SECONDS,
+
+            "horizon_minutes":
+                PREDICTION_HORIZON_MINUTES,
+
+            "model":
+                "XGBoost",
+
+        },
+
     }
 
 
 # ============================================================
-# PREDICTION
+# DIRECT PREDICTION API
 # ============================================================
 
 @app.post("/predict")
@@ -426,19 +587,19 @@ def predict(data: dict):
 
             detail={
 
-                "message": (
-                    "Missing required features"
-                ),
+                "message":
+                    "Missing required features",
 
-                "missing_count": (
-                    len(missing_features)
-                ),
+                "missing_count":
+                    len(missing_features),
 
-                "missing_features": (
-                    missing_features[:20]
-                ),
+                "missing_features":
+                    missing_features[:20],
+
             },
+
         )
+
 
     # --------------------------------------------------------
     # CREATE DATAFRAME
@@ -448,41 +609,104 @@ def predict(data: dict):
         [data]
     )
 
+
     # --------------------------------------------------------
-    # ENSURE CORRECT FEATURE ORDER
+    # ENSURE FEATURE ORDER
     # --------------------------------------------------------
 
     input_df = input_df[
         feature_names
     ]
 
+    # Reject values that would silently poison model output (NaN/Infinity).
+    try:
+        input_df = input_df.astype(float)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail="All model features must be numeric.",
+        ) from error
+
+    if not np.isfinite(input_df.to_numpy()).all():
+        raise HTTPException(
+            status_code=422,
+            detail="All model features must be finite.",
+        )
+
+
     # --------------------------------------------------------
-    # PREDICTION
+    # MODEL PREDICTION
     # --------------------------------------------------------
 
     prediction = model.predict(
         input_df
     )
 
-    prediction_value = float(
-        np.asarray(
-            prediction
-        ).reshape(-1)[0]
+
+    prediction_array = np.asarray(
+        prediction
     )
+
+
+    # --------------------------------------------------------
+    # HANDLE MODEL OUTPUT
+    # --------------------------------------------------------
+
+    if (
+        prediction_array.ndim >= 2
+        and prediction_array.shape[1] >= 8
+    ):
+
+        predictions = (
+            prediction_array[0]
+            .tolist()
+        )
+
+        module_predictions = {
+
+            f"Module_{index + 1}_Avg_Temp":
+                float(value)
+
+            for index, value
+            in enumerate(predictions)
+
+        }
+
+        primary_prediction = float(
+            predictions[0]
+        )
+
+    else:
+
+        primary_prediction = float(
+            prediction_array
+            .reshape(-1)[0]
+        )
+
+        module_predictions = {}
+
+
+    # --------------------------------------------------------
+    # RESPONSE
+    # --------------------------------------------------------
 
     return {
 
-        "prediction": (
-            prediction_value
-        ),
+        "prediction":
+            primary_prediction,
 
-        "target": (
-            "Module_8_Avg_Temp"
-        ),
+        "module_predictions":
+            module_predictions,
 
-        "prediction_horizon_seconds": (
-            60
-        ),
+        "target":
+            "Data center module temperature",
+
+        "prediction_horizon_seconds":
+            PREDICTION_HORIZON_SECONDS,
+
+        "prediction_horizon":
+            f"{PREDICTION_HORIZON_MINUTES} minutes",
+
     }
 
 
@@ -510,6 +734,7 @@ def monitoring_predictions(
         ge=1,
         le=500,
     )
+
 ):
 
     return monitoring_service.get_predictions(
@@ -525,6 +750,7 @@ def monitoring_alerts(
         ge=1,
         le=500,
     )
+
 ):
 
     return monitoring_service.get_alerts(
@@ -546,6 +772,7 @@ def monitoring_system_events(
         ge=1,
         le=500,
     )
+
 ):
 
     return monitoring_service.get_system_events(
@@ -565,6 +792,7 @@ def monitoring_module_history(
         ge=1,
         le=1000,
     ),
+
 ):
 
     return monitoring_service.get_module_history(

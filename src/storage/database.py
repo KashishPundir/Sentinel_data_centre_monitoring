@@ -30,10 +30,15 @@ def get_connection():
 
     connection = sqlite3.connect(
         DATABASE_PATH,
-        check_same_thread=False
+        check_same_thread=False,
+        timeout=10,
     )
 
     connection.row_factory = sqlite3.Row
+    # WAL lets the API serve the dashboard while the consumer writes telemetry.
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA busy_timeout=10000")
+    connection.execute("PRAGMA foreign_keys=ON")
 
     return connection
 
@@ -82,6 +87,18 @@ def initialize_database():
         """
     )
 
+    # Query paths used by the dashboard and idempotency checks used by the
+    # Kafka worker.  INDEX (rather than a new UNIQUE constraint) keeps this
+    # migration safe for existing demo databases.
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_predictions_module_timestamp "
+        "ON predictions(module, timestamp DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_predictions_kafka "
+        "ON predictions(kafka_partition, kafka_offset, module)"
+    )
+
     # --------------------------------------------------------
     # ALERTS
     # --------------------------------------------------------
@@ -116,6 +133,10 @@ def initialize_database():
         )
         """
     )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alerts_module_timestamp "
+        "ON alerts(module, timestamp DESC)"
+    )
 
     # --------------------------------------------------------
     # SYSTEM EVENTS
@@ -136,6 +157,10 @@ def initialize_database():
             message TEXT
         )
         """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_system_events_timestamp "
+        "ON system_events(timestamp DESC)"
     )
 
     connection.commit()

@@ -36,7 +36,7 @@ class AlertManager:
             → reset alert state
     """
 
-    def __init__(self, log_path="logs/alerts.jsonl"):
+    def __init__(self, log_path="logs/alerts.jsonl", initial_states=None):
 
         self.log_path = Path(log_path)
 
@@ -53,7 +53,9 @@ class AlertManager:
         #     "Module_6_Avg_Temp": "WARNING"
         # }
         #
-        self.module_states = {}
+        # Restore state when a consumer is restarted so an unchanged
+        # condition does not page operators again.
+        self.module_states = dict(initial_states or {})
 
 
     # ========================================================

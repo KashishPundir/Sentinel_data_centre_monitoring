@@ -21,6 +21,32 @@ class SentinelRepository:
     # PREDICTIONS
     # ========================================================
 
+    def prediction_exists(
+        self,
+        kafka_partition: Optional[int],
+        kafka_offset: Optional[int],
+        module: str,
+    ) -> bool:
+        """Return whether this Kafka record has already been persisted.
+
+        Kafka delivery is at-least-once, so an offset may be replayed after a
+        crash.  This check makes processing idempotent without assuming a
+        particular database backend.
+        """
+        if kafka_partition is None or kafka_offset is None:
+            return False
+        connection = get_connection()
+        try:
+            row = connection.execute(
+                """SELECT 1 FROM predictions
+                   WHERE kafka_partition = ? AND kafka_offset = ? AND module = ?
+                   LIMIT 1""",
+                (kafka_partition, kafka_offset, module),
+            ).fetchone()
+            return row is not None
+        finally:
+            connection.close()
+
     def save_prediction(self, prediction: PredictionRecord):
 
         connection = get_connection()
@@ -65,6 +91,20 @@ class SentinelRepository:
         connection.commit()
 
         connection.close()
+
+    def get_latest_risk_states(self) -> Dict[str, str]:
+        """Load last known module risk states for alert de-duplication."""
+        connection = get_connection()
+        try:
+            rows = connection.execute(
+                """SELECT p.module, p.risk_level FROM predictions p
+                   INNER JOIN (
+                       SELECT module, MAX(id) AS id FROM predictions GROUP BY module
+                   ) latest ON latest.id = p.id"""
+            ).fetchall()
+            return {row["module"]: row["risk_level"] for row in rows}
+        finally:
+            connection.close()
 
     # ========================================================
     # ALERTS

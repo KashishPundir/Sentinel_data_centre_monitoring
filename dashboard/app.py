@@ -13,7 +13,7 @@ from streamlit_autorefresh import (
 
 API_URL = "http://127.0.0.1:8000"
 
-REFRESH_INTERVAL = 3000
+REFRESH_INTERVAL = 3000  # 3 seconds
 
 
 # ============================================================
@@ -28,7 +28,7 @@ st.set_page_config(
 
 
 # ============================================================
-# API HELPER
+# API HELPERS
 # ============================================================
 
 def get_api_data(endpoint):
@@ -104,11 +104,67 @@ st.caption(
 
 
 # ============================================================
-# GET SYSTEM PIPELINE
+# FORECAST CONFIGURATION
 # ============================================================
 
-pipeline = get_api_data(
-    "/monitoring/system-status"
+forecast_config = get_api_data(
+    "/forecast/config"
+)
+
+
+if forecast_config:
+
+    horizon_minutes = forecast_config.get(
+        "horizon_minutes",
+        5,
+    )
+
+    horizon_seconds = forecast_config.get(
+        "horizon_seconds",
+        300,
+    )
+
+else:
+
+    # Fallback only for UI
+    horizon_minutes = 5
+    horizon_seconds = 300
+
+
+# ============================================================
+# FORECAST KPI CARDS
+# ============================================================
+
+col1, col2, col3 = st.columns(3)
+
+
+with col1:
+
+    st.metric(
+        "AI Forecast Horizon",
+        f"{horizon_minutes} min",
+    )
+
+
+with col2:
+
+    st.metric(
+        "Prediction Engine",
+        "XGBoost",
+    )
+
+
+with col3:
+
+    st.metric(
+        "Telemetry Pipeline",
+        "Live",
+    )
+
+
+st.caption(
+    f"XGBoost forecast horizon: "
+    f"+{horizon_seconds} seconds"
 )
 
 
@@ -116,8 +172,15 @@ pipeline = get_api_data(
 # SYSTEM PIPELINE
 # ============================================================
 
+st.divider()
+
 st.subheader(
-    "System Pipeline"
+    "🔗 System Pipeline"
+)
+
+
+pipeline = get_api_data(
+    "/monitoring/system-status"
 )
 
 
@@ -153,7 +216,6 @@ if pipeline:
         {},
     )
 
-    columns = st.columns(6)
 
     components = [
 
@@ -186,7 +248,12 @@ if pipeline:
             "FastAPI",
             api,
         ),
+
     ]
+
+
+    columns = st.columns(6)
+
 
     for column, (
         name,
@@ -208,6 +275,7 @@ if pipeline:
                 "UNKNOWN",
             )
 
+
             if healthy:
 
                 st.success(
@@ -220,13 +288,14 @@ if pipeline:
                     f"🔴 {name}"
                 )
 
+
             st.caption(
                 status
             )
 
 
     # --------------------------------------------------------
-    # PROGRESS
+    # SIMULATION PROGRESS
     # --------------------------------------------------------
 
     progress = simulation.get(
@@ -244,6 +313,7 @@ if pipeline:
         0,
     )
 
+
     st.progress(
         min(
             progress / 100,
@@ -251,12 +321,14 @@ if pipeline:
         )
     )
 
+
     st.caption(
         f"Simulation progress: "
         f"{progress:.2f}% "
         f"({records_sent} / "
         f"{total_records})"
     )
+
 
 else:
 
@@ -278,25 +350,19 @@ st.subheader(
 
 if pipeline:
 
-    simulation_status = (
-        simulation.get(
-            "status",
-            "UNKNOWN",
-        )
+    simulation_status = simulation.get(
+        "status",
+        "UNKNOWN",
     )
 
-    simulation_speed = (
-        simulation.get(
-            "speed",
-            1.0,
-        )
+    simulation_speed = simulation.get(
+        "speed",
+        1.0,
     )
 
-    current_scenario = (
-        simulation.get(
-            "scenario",
-            "NORMAL",
-        )
+    current_scenario = simulation.get(
+        "scenario",
+        "NORMAL",
     )
 
 else:
@@ -309,11 +375,11 @@ else:
 
 
 # ------------------------------------------------------------
-# STATUS
+# CURRENT STATE
 # ------------------------------------------------------------
 
-status_col1, status_col2 = (
-    st.columns(2)
+status_col1, status_col2, status_col3 = (
+    st.columns(3)
 )
 
 
@@ -328,20 +394,27 @@ with status_col1:
 with status_col2:
 
     st.metric(
-        "Current Speed",
+        "Replay Speed",
         f"{simulation_speed}x",
     )
 
 
+with status_col3:
+
+    st.metric(
+        "Scenario",
+        current_scenario,
+    )
+
+
 # ------------------------------------------------------------
-# SPEED
+# SPEED CONTROL
 # ------------------------------------------------------------
 
 st.write(
     "**Replay Speed**"
 )
 
-speed_columns = st.columns(5)
 
 speed_options = [
     1,
@@ -350,6 +423,11 @@ speed_options = [
     10,
     20,
 ]
+
+
+speed_columns = st.columns(
+    len(speed_options)
+)
 
 
 for column, speed in zip(
@@ -361,7 +439,8 @@ for column, speed in zip(
 
         if st.button(
             f"{speed}x",
-            use_container_width=True,
+            width="stretch",
+            key=f"speed_{speed}",
         ):
 
             result = post_api_data(
@@ -389,23 +468,20 @@ with control_col1:
 
     if st.button(
         "▶ Start",
-        use_container_width=True,
+        width="stretch",
     ):
 
         result = post_api_data(
             "/simulation/start",
             {
-                "speed": float(
-                    simulation_speed
-                )
+                "speed":
+                    float(
+                        simulation_speed
+                    )
             },
         )
 
         if result:
-
-            st.success(
-                "Simulation started."
-            )
 
             st.rerun()
 
@@ -414,7 +490,7 @@ with control_col2:
 
     if st.button(
         "⏸ Pause",
-        use_container_width=True,
+        width="stretch",
     ):
 
         result = post_api_data(
@@ -423,10 +499,6 @@ with control_col2:
 
         if result:
 
-            st.info(
-                "Simulation paused."
-            )
-
             st.rerun()
 
 
@@ -434,7 +506,7 @@ with control_col3:
 
     if st.button(
         "⏹ Stop",
-        use_container_width=True,
+        width="stretch",
     ):
 
         result = post_api_data(
@@ -442,10 +514,6 @@ with control_col3:
         )
 
         if result:
-
-            st.warning(
-                "Simulation stopped."
-            )
 
             st.rerun()
 
@@ -497,13 +565,23 @@ selected_scenario = st.selectbox(
 scenario_descriptions = {
 
     "NORMAL":
-        "Original telemetry. No anomaly injection.",
+        (
+            "Original telemetry. "
+            "No anomaly injection."
+        ),
 
     "WARNING":
-        "Module 6 temperature is increased by +5°C.",
+        (
+            "Module 6 temperature "
+            "anomaly injection."
+        ),
 
     "CRITICAL":
-        "Module 6 temperature is increased by +10°C.",
+        (
+            "Strong Module 6 temperature "
+            "anomaly injection."
+        ),
+
 }
 
 
@@ -516,13 +594,14 @@ st.info(
 
 if st.button(
     "🎯 Apply Scenario",
-    use_container_width=True,
+    width="stretch",
 ):
 
     result = post_api_data(
         "/simulation/scenario",
         {
-            "scenario": selected_scenario
+            "scenario":
+                selected_scenario
         },
     )
 
@@ -543,11 +622,6 @@ if st.button(
 st_autorefresh(
     interval=REFRESH_INTERVAL,
     key="sentineldc_refresh",
-)
-
-st.write(
-    "Dashboard refresh:",
-    pd.Timestamp.now(),
 )
 
 
@@ -577,20 +651,20 @@ predictions = get_api_data(
 
 
 # ============================================================
-# API / SYSTEM HEALTH
+# SYSTEM HEALTH
 # ============================================================
 
 st.divider()
 
 st.subheader(
-    "System Status"
+    "❤️ System Health"
 )
 
 
 if health is None:
 
     st.error(
-        "🔴 Monitoring API is unavailable"
+        "🔴 Monitoring API unavailable."
     )
 
 else:
@@ -605,11 +679,13 @@ else:
         "unknown",
     )
 
-    col1, col2, col3 = (
+
+    health_col1, health_col2, health_col3 = (
         st.columns(3)
     )
 
-    with col1:
+
+    with health_col1:
 
         if status == "healthy":
 
@@ -624,7 +700,7 @@ else:
             )
 
 
-    with col2:
+    with health_col2:
 
         if database_health == "healthy":
 
@@ -639,15 +715,15 @@ else:
             )
 
 
-    with col3:
+    with health_col3:
 
         st.info(
-            "🔄 Auto-refresh: 3 seconds"
+            "🔄 Live refresh: 3 seconds"
         )
 
 
 # ============================================================
-# PREPARE PREDICTION DATA
+# PREDICTION DATAFRAME
 # ============================================================
 
 prediction_df = pd.DataFrame()
@@ -667,7 +743,7 @@ if (
 
 
 # ============================================================
-# CALCULATE RECENT MAE
+# RECENT MAE
 # ============================================================
 
 recent_mae = None
@@ -680,14 +756,15 @@ if not prediction_df.empty:
         "current_temperature",
 
         "predicted_temperature",
+
     }
+
 
     if required_columns.issubset(
         prediction_df.columns
     ):
 
         valid_predictions = (
-
             prediction_df[
                 [
                     "current_temperature",
@@ -697,9 +774,10 @@ if not prediction_df.empty:
             .dropna()
         )
 
+
         if not valid_predictions.empty:
 
-            absolute_errors = (
+            recent_mae = (
 
                 valid_predictions[
                     "current_temperature"
@@ -711,50 +789,38 @@ if not prediction_df.empty:
                     "predicted_temperature"
                 ]
 
-            ).abs()
-
-            recent_mae = (
-                absolute_errors.mean()
-            )
+            ).abs().mean()
 
 
 # ============================================================
-# SUMMARY KPI CARDS
+# SYSTEM OVERVIEW
 # ============================================================
 
 st.subheader(
-    "System Overview"
+    "📊 System Overview"
 )
 
 
 if summary:
 
-    total_predictions = (
-        summary.get(
-            "total_predictions",
-            0,
-        )
+    total_predictions = summary.get(
+        "total_predictions",
+        0,
     )
 
-    total_alerts = (
-        summary.get(
-            "total_alerts",
-            0,
-        )
+    total_alerts = summary.get(
+        "total_alerts",
+        0,
     )
 
-    warning_alerts = (
-        summary.get(
-            "warning_alerts",
-            0,
-        )
+    warning_alerts = summary.get(
+        "warning_alerts",
+        0,
     )
 
-    critical_alerts = (
-        summary.get(
-            "critical_alerts",
-            0,
-        )
+    critical_alerts = summary.get(
+        "critical_alerts",
+        0,
     )
 
 else:
@@ -768,12 +834,12 @@ else:
     critical_alerts = 0
 
 
-col1, col2, col3, col4, col5 = (
+kpi1, kpi2, kpi3, kpi4, kpi5 = (
     st.columns(5)
 )
 
 
-with col1:
+with kpi1:
 
     st.metric(
         "Predictions",
@@ -781,7 +847,7 @@ with col1:
     )
 
 
-with col2:
+with kpi2:
 
     st.metric(
         "Total Alerts",
@@ -789,7 +855,7 @@ with col2:
     )
 
 
-with col3:
+with kpi3:
 
     st.metric(
         "Warnings",
@@ -797,7 +863,7 @@ with col3:
     )
 
 
-with col4:
+with kpi4:
 
     st.metric(
         "Critical",
@@ -805,7 +871,7 @@ with col4:
     )
 
 
-with col5:
+with kpi5:
 
     if recent_mae is not None:
 
@@ -829,7 +895,7 @@ with col5:
 st.divider()
 
 st.subheader(
-    "Module Health"
+    "🌡️ Module Health"
 )
 
 
@@ -840,6 +906,7 @@ if (
     )
     and modules
 ):
+
 
     def module_sort_key(
         module
@@ -870,7 +937,7 @@ if (
     )
 
 
-    columns = st.columns(4)
+    module_columns = st.columns(4)
 
 
     for index, module in enumerate(
@@ -895,6 +962,7 @@ if (
             "UNKNOWN",
         )
 
+
         display_name = (
             module_name.replace(
                 "_Avg_Temp",
@@ -903,9 +971,14 @@ if (
         )
 
 
-        with columns[
+        with module_columns[
             index % 4
         ]:
+
+
+            # ------------------------------------------------
+            # RISK
+            # ------------------------------------------------
 
             if risk == "CRITICAL":
 
@@ -937,32 +1010,91 @@ if (
             )
 
 
+            # ------------------------------------------------
+            # CURRENT TEMPERATURE
+            # ------------------------------------------------
+
             if current is not None:
+
+                current_value = float(
+                    current
+                )
 
                 st.write(
                     f"Current: "
-                    f"**{float(current):.2f} °C**"
+                    f"**{current_value:.2f} °C**"
                 )
 
             else:
+
+                current_value = None
 
                 st.write(
                     "Current: **N/A**"
                 )
 
 
+            # ------------------------------------------------
+            # 5-MINUTE AI FORECAST
+            # ------------------------------------------------
+
             if predicted is not None:
 
+                predicted_value = float(
+                    predicted
+                )
+
                 st.write(
-                    f"Predicted: "
-                    f"**{float(predicted):.2f} °C**"
+                    f"AI Forecast "
+                    f"(+{horizon_minutes} min): "
+                    f"**{predicted_value:.2f} °C**"
                 )
 
             else:
 
+                predicted_value = None
+
                 st.write(
-                    "Predicted: **N/A**"
+                    "AI Forecast: **N/A**"
                 )
+
+
+            # ------------------------------------------------
+            # EXPECTED TEMPERATURE CHANGE
+            # ------------------------------------------------
+
+            if (
+                current_value is not None
+                and predicted_value is not None
+            ):
+
+                delta = (
+                    predicted_value
+                    - current_value
+                )
+
+
+                if delta > 0:
+
+                    st.write(
+                        f"Expected rise: "
+                        f"**+{delta:.2f} °C**"
+                    )
+
+                elif delta < 0:
+
+                    st.write(
+                        f"Expected drop: "
+                        f"**{delta:.2f} °C**"
+                    )
+
+                else:
+
+                    st.write(
+                        "Expected change: "
+                        "**0.00 °C**"
+                    )
+
 
 else:
 
@@ -989,6 +1121,7 @@ if (
     )
     and alerts
 ):
+
 
     for alert in alerts:
 
@@ -1023,6 +1156,7 @@ if (
             if predicted is not None
 
             else "N/A"
+
         )
 
 
@@ -1033,21 +1167,19 @@ if (
             if current is not None
 
             else "N/A"
+
         )
 
 
         alert_text = (
 
             f"**{level}** | "
-            f"**{module}**\n\n"
-
-            f"Predicted: "
-            f"**{predicted_text}**  \n"
-
-            f"Current: "
-            f"**{current_text}**  \n\n"
-
+            f"**{module}**  \n"
+            f"Current: **{current_text}**  \n"
+            f"5-min forecast: "
+            f"**{predicted_text}**  \n\n"
             f"{message}"
+
         )
 
 
@@ -1069,6 +1201,7 @@ if (
                 f"⚪ {alert_text}"
             )
 
+
 else:
 
     st.success(
@@ -1077,13 +1210,89 @@ else:
 
 
 # ============================================================
-# TEMPERATURE TREND
+# RECENT PREDICTIONS
 # ============================================================
 
 st.divider()
 
 st.subheader(
-    "📈 Temperature Prediction Trend"
+    "📋 Recent Predictions"
+)
+
+
+if (
+    isinstance(
+        predictions,
+        list,
+    )
+    and predictions
+):
+
+    display_predictions = (
+        pd.DataFrame(
+            predictions
+        )
+    )
+
+
+    # Rename for recruiter-friendly UI
+    rename_map = {
+
+        "current_temperature":
+            "Current °C",
+
+        "predicted_temperature":
+            "5-Min Forecast °C",
+
+        "temperature_delta":
+            "Expected Change °C",
+
+        "risk_level":
+            "Risk",
+
+        "module":
+            "Module",
+
+        "timestamp":
+            "Timestamp",
+
+    }
+
+
+    display_predictions = (
+        display_predictions.rename(
+            columns=rename_map
+        )
+    )
+
+
+    st.dataframe(
+        display_predictions,
+        width="stretch",
+        hide_index=True,
+    )
+
+
+else:
+
+    st.info(
+        "No prediction data available."
+    )
+
+
+# ============================================================
+# 5-MINUTE TEMPERATURE FORECAST
+# ============================================================
+
+st.divider()
+
+st.subheader(
+    "📈 5-Minute Temperature Forecast"
+)
+
+st.caption(
+    "Current telemetry vs. XGBoost "
+    f"forecast +{horizon_minutes} minutes."
 )
 
 
@@ -1095,15 +1304,19 @@ if (
     and modules
 ):
 
+
     available_modules = sorted(
 
         [
+
             module.get("module")
 
             for module in modules
 
             if module.get("module")
+
         ]
+
     )
 
 
@@ -1116,9 +1329,11 @@ if (
 
 
         history = get_api_data(
+
             f"/monitoring/modules/"
             f"{selected_module}/history"
             f"?limit=100"
+
         )
 
 
@@ -1129,6 +1344,7 @@ if (
             )
             and history
         ):
+
 
             history_df = pd.DataFrame(
                 history
@@ -1148,12 +1364,16 @@ if (
                     errors="coerce",
                 )
 
+
                 history_df = (
                     history_df
                     .dropna(
                         subset=[
                             "timestamp"
                         ]
+                    )
+                    .sort_values(
+                        "timestamp"
                     )
                     .set_index(
                         "timestamp"
@@ -1187,19 +1407,10 @@ if (
             if chart_columns:
 
                 chart_df = (
-
                     history_df[
                         chart_columns
                     ]
-
-                    .apply(
-                        pd.to_numeric,
-                        errors="coerce",
-                    )
-
-                    .dropna(
-                        how="all"
-                    )
+                    .copy()
                 )
 
 
@@ -1207,180 +1418,37 @@ if (
 
                     (
                         "Current Temperature"
-
                         if column
                         == "current_temperature"
-
                         else
-                        "Predicted Temperature"
+                        "5-Minute AI Forecast"
                     )
 
                     for column
                     in chart_df.columns
+
                 ]
 
 
                 st.line_chart(
                     chart_df,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             else:
 
                 st.info(
-                    "Temperature data unavailable."
+                    "Temperature columns "
+                    "are not available."
                 )
+
 
         else:
 
             st.info(
-                f"No history available for "
-                f"{selected_module}."
+                "No temperature history "
+                "available yet."
             )
-
-    else:
-
-        st.info(
-            "No modules available."
-        )
-
-else:
-
-    st.info(
-        "Module information unavailable."
-    )
-
-
-# ============================================================
-# RECENT PREDICTIONS
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "Recent Predictions"
-)
-
-
-if not prediction_df.empty:
-
-    display_df = (
-        prediction_df.copy()
-    )
-
-
-    preferred_columns = [
-
-        "timestamp",
-
-        "module",
-
-        "current_temperature",
-
-        "predicted_temperature",
-
-        "temperature_delta",
-
-        "warning_threshold",
-
-        "critical_threshold",
-
-        "risk_level",
-
-        "replay_id",
-
-        "kafka_partition",
-
-        "kafka_offset",
-    ]
-
-
-    existing_columns = [
-
-        column
-
-        for column in preferred_columns
-
-        if column in display_df.columns
-    ]
-
-
-    remaining_columns = [
-
-        column
-
-        for column in display_df.columns
-
-        if column not in existing_columns
-    ]
-
-
-    display_df = display_df[
-        existing_columns
-        + remaining_columns
-    ]
-
-
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-else:
-
-    st.info(
-        "No predictions available."
-    )
-
-
-# ============================================================
-# SYSTEM INFORMATION
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "System Information"
-)
-
-
-info_col1, info_col2, info_col3 = (
-    st.columns(3)
-)
-
-
-with info_col1:
-
-    st.write(
-        "**Inference Engine**"
-    )
-
-    st.write(
-        "XGBoost"
-    )
-
-
-with info_col2:
-
-    st.write(
-        "**Message Broker**"
-    )
-
-    st.write(
-        "Apache Kafka"
-    )
-
-
-with info_col3:
-
-    st.write(
-        "**Monitoring Stack**"
-    )
-
-    st.write(
-        "FastAPI + SQLite + Streamlit"
-    )
 
 
 # ============================================================
@@ -1390,10 +1458,12 @@ with info_col3:
 st.divider()
 
 st.caption(
-    "SentinelDC | AI-Powered Data Center "
-    "Temperature Monitoring & Predictive Alert Platform"
+    "SentinelDC | "
+    "5-Minute XGBoost Forecasting | "
+    "Kafka + FastAPI + SQLite + Streamlit"
 )
 
 st.caption(
-    "Live monitoring refresh interval: 3 seconds"
+    "Dashboard automatically refreshes "
+    "every 3 seconds."
 )
