@@ -1,34 +1,42 @@
 {
-    "Module_1_Avg_Temp": {
-        "warning": 24.454556,
-        "critical": 24.8890465
-    },
-    "Module_2_Avg_Temp": {
-        "warning": 30.199684124999997,
-        "critical": 30.5139635
-    },
-    "Module_3_Avg_Temp": {
-        "warning": 30.101461375,
-        "critical": 30.4045805
-    },
-    "Module_4_Avg_Temp": {
-        "warning": 27.375336,
-        "critical": 27.748234125
-    },
-    "Module_5_Avg_Temp": {
-        "warning": 33.59832475,
-        "critical": 33.865568895
-    },
-    "Module_6_Avg_Temp": {
-        "warning": 27.05533775,
-        "critical": 27.301492255000003
-    },
-    "Module_7_Avg_Temp": {
-        "warning": 27.643282975000005,
-        "critical": 28.04792575
-    },
-    "Module_8_Avg_Temp": {
-        "warning": 24.654471875000002,
-        "critical": 25.40186016
-    }
+  "Module_1_Avg_Temp": {
+    "warning": 24.703223617499997,
+    "critical": 25.183017765,
+    "source": "historical_percentiles"
+  },
+  "Module_2_Avg_Temp": {
+    "warning": 28.252398307500002,
+    "critical": 28.61275037325,
+    "source": "historical_percentiles"
+  },
+  "Module_3_Avg_Temp": {
+    "warning": 28.3399697025,
+    "critical": 28.475666117,
+    "source": "historical_percentiles"
+  },
+  "Module_4_Avg_Temp": {
+    "warning": 26.558796723749996,
+    "critical": 26.81313539475,
+    "source": "historical_percentiles"
+  },
+  "Module_5_Avg_Temp": {
+    "warning": 30.319947444999997,
+    "critical": 30.620943070000003,
+    "source": "historical_percentiles"
+  },
+  "Module_6_Avg_Temp": {
+    "warning": 27.154608525,
+    "critical": 27.342636362,
+    "source": "historical_percentiles"
+  },
+  "Module_7_Avg_Temp": {
+    "warning": 27.30633074,
+    "critical": 27.566182456000003,
+    "source": "historical_percentiles"
+  },
+  "Module_8_Avg_Temp": {
+    "warning": 24.66135421,
+    "critical": 25.189444966,
+    "source": "historical_percentiles"
+  }
 }
