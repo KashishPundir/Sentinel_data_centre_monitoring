@@ -1,0 +1,11 @@
+xgboost
+pandas
+pydantic
+fastapi
+joblib
+uvicorn
+numpy
+streamlit
+kafka-python
+scikit-learn
+streamlit-autorefresh
