@@ -1,4 +1,4 @@
-# 🛰️ SentinelDC — Simulated Real-Time Data Center Thermal Monitoring & 5-Minute Forecasting
+# 🛰️ SentinelDC — Real-Time Data Center Thermal Monitoring & 5-Minute Forecasting
 
 **A production-style ML system that predicts data center rack temperatures 5 minutes into the future — before they become a problem.**
 
@@ -69,10 +69,24 @@ The model was benchmarked against a **persistence baseline** (the industry-stand
 
 ## 📁 Dataset
 
-- **Source:** Live data center sensor telemetry, 8 hardware modules, multi-channel temperature + power sensors
-- **Raw volume:** 1,371,363 readings @ ~1 Hz (Sept 16 – Oct 2, 2024)
-- **Modeling cadence:** Resampled to 10-second intervals (137,128 rows) to reduce noise while preserving thermal dynamics
-- **Forecast horizon:** Exactly 5 minutes (30 steps at 10s cadence)
+**File:** `AAU_temperature_and_power_use.csv`
+
+This is real telemetry captured from a physical data center facility, containing 3 power channels and 8 temperature-sensing modules (each with 2–8 sub-channel probes), recorded at approximately 1 Hz.
+
+| Property | Value |
+|---|---|
+| Raw rows | 1,371,363 readings |
+| Raw columns | 52 (1 timestamp + 3 power channels + 48 temperature sub-channels) |
+| Native sampling rate | ~1 Hz |
+| Time range | 2024-09-16 16:58:30 → 2024-10-02 13:53:02 (≈16 days) |
+| Modules | 8, each aggregated into a `Module_N_Avg_Temp` signal |
+| Power channels | 3 (`Power Ch 1/2/3 (W)`), aggregated into `Total_Power` |
+| Modeling cadence used | Resampled to 10-second intervals → 137,128 rows |
+| Forecast horizon | Exactly 5 minutes ahead (30 steps at 10s cadence) |
+
+**Source:** The dataset's naming convention (`AAU_...`) suggests an origin tied to **Aalborg University (Denmark)**, which is known to publish research datasets (including data center/IT infrastructure telemetry) through its VBN research database and Kaggle organization. However, I was unable to locate a public, directly-linkable page hosting this exact file — Aalborg University's public Kaggle datasets are computer-vision focused, and this file doesn't appear on Kaggle, Mendeley Data, Zenodo, or IEEE Dataport under this name.
+
+> ⚠️ **If you know where you originally downloaded this file** (a course, a research portal, a private dataset link, etc.), drop the link here — I didn't want to fabricate a source. If you can share where you got it from (or any identifying text/README that came with it), I can verify and cite it properly.
 
 ---
 
