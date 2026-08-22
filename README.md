@@ -69,7 +69,7 @@ The model was benchmarked against a **persistence baseline** (the industry-stand
 
 ## 📁 Dataset
 
-**File:** `AAU_temperature_and_power_use.csv`
+**Dataset Link:** [ `AAU_temperature_and_power_use.csv`](https://zenodo.org/records/19398358)
 
 This is real telemetry captured from a physical data center facility, containing 3 power channels and 8 temperature-sensing modules (each with 2–8 sub-channel probes), recorded at approximately 1 Hz.
 
